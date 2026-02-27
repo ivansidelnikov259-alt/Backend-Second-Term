@@ -1,6 +1,6 @@
 # Работа с Swagger
 ## 1.Демонстрация главного экрана Swagger и всех эндпоинтов
-![Swagger](/practice-5/Screenshots/Swagger-1.png)
+![Swagger_Main](/practice-5/Screenshots/Swagger-1.png)
 
 ## 2. Развернутый GET /api/products Получение всех товаров
 ![GET_Swagger](/practice-5/Screenshots/Swagger-2.png)
@@ -18,5 +18,5 @@
 ![DEL_Swagger](/practice-5/Screenshots/Swagger-6.png)
 
 ## 7. PATCH/api/products/{id} Обновление товара
-![DEL_Swagger](/practice-5/Screenshots/Swagger-7.png)
+![DEL_Swagger](/practice-5/Screenshots/Swagger-7.png)    
 

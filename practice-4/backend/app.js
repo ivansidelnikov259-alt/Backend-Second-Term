@@ -3,9 +3,12 @@ const cors = require('cors');
 const { nanoid } = require('nanoid');
 const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const port = 3000;
+const DATA_FILE = path.join(__dirname, 'products.json');
 
 // Middleware
 app.use(express.json());
@@ -103,7 +106,7 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 // Swagger UI по адресу /api-docs
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Товары для интернет-магазина
+// Товары для интернет-магазина (БД)
 let products = [
     { 
         id: nanoid(8),
@@ -197,7 +200,23 @@ let products = [
     }
 ];
 
-// Middleware для логирования запросов
+// Загрузка при старте
+try {
+    if (fs.existsSync(DATA_FILE)) {
+        products = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        console.log('📂 Данные загружены из файла');
+    }
+} catch (err) {
+    console.log('🆕 Создан новый массив товаров');
+}
+
+// Сохранение при изменениях
+function saveProducts() {
+    fs.writeFileSync(DATA_FILE, JSON.stringify(products, null, 2));
+    console.log('💾 Данные сохранены');
+}
+
+// Логирование запросов
 app.use((req, res, next) => {
     console.log(`📨 [${new Date().toISOString()}] [${req.method}] ${req.path}`);
     console.log(`   Откуда: ${req.headers.origin || 'прямой запрос'}`);
@@ -207,7 +226,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Функция-помощник для поиска товара
+// Поиска товара
 function findProductOr404(id, res) {
     const product = products.find(p => p.id === id);
     if (!product) {
@@ -341,6 +360,7 @@ app.post('/api/products', (req, res) => {
     };
     
     products.push(newProduct);
+    saveProducts();
     res.status(201).json(newProduct);
 });
 
@@ -422,6 +442,7 @@ app.patch('/api/products/:id', (req, res) => {
     if (stock) product.stock = Number(stock);
     if (imageUrl) product.imageUrl = imageUrl;
     
+    saveProducts();
     res.json(product);
 });
 
@@ -457,6 +478,7 @@ app.delete('/api/products/:id', (req, res) => {
     }
     
     products = products.filter(p => p.id !== id);
+    saveProducts();
     res.status(204).send();
 });
 
@@ -467,9 +489,9 @@ app.use((req, res) => {
 
 // Запуск сервера
 app.listen(port, () => {
-    console.log(`🚀 Сервер запущен на http://localhost:${port}`);
-    console.log(`📦 Товаров в базе: ${products.length}`);
-    console.log(`📝 API: http://localhost:${port}/api/products`);
-    console.log(`📚 Документация Swagger: http://localhost:${port}/api-docs`);
-    console.log(`🔧 CORS разрешен для портов: 3001 и 5173`);
+    console.log(` Сервер запущен на http://localhost:${port}`);
+    console.log(` Товаров в базе: ${products.length}`);
+    console.log(` API: http://localhost:${port}/api/products`);
+    console.log(` Документация Swagger: http://localhost:${port}/api-docs`);
+    console.log(` CORS разрешен для портов: 3001 и 5173`);
 });

@@ -1,0 +1,92 @@
+[
+  {
+    "id": "aHO1n-wx",
+    "name": "Игровой ноутбук ASUS ROG",
+    "price": 149990,
+    "description": "Мощный игровой ноутбук с RTX 4060, 16GB RAM, 1TB SSD",
+    "category": "Ноутбуки",
+    "stock": 5,
+    "imageUrl": "https://ir.ozone.ru/s3/multimedia-8/6090112472.jpg"
+  },
+  {
+    "id": "drFycmGn",
+    "name": "Смартфон iPhone 17 Pro",
+    "price": 200000,
+    "description": "Флагманский смартфон с алюминиевым корпусом",
+    "category": "Смартфоны",
+    "stock": 15,
+    "imageUrl": "https://avatars.mds.yandex.net/get-mpic/13594757/2a000001994ea791f2a58ac3cf1f0b5cccfc/orig"
+  },
+  {
+    "id": "Pd8rjOl0",
+    "name": "Наушники Sony WH-1000XM5",
+    "price": 29990,
+    "description": "Беспроводные наушники с активным шумоподавлением",
+    "category": "Аудио",
+    "stock": 15,
+    "imageUrl": "https://ir.ozone.ru/s3/multimedia-c/6831239772.jpg"
+  },
+  {
+    "id": "UnYVrFfE",
+    "name": "Монитор Samsung Odyssey G7",
+    "price": 64990,
+    "description": "32\" изогнутый монитор, 240Hz, 4K",
+    "category": "Мониторы",
+    "stock": 3,
+    "imageUrl": "https://main-cdn.sbermegamarket.ru/big2/hlr-system/-14/493/319/084/271/045/600011714040b2.jpeg"
+  },
+  {
+    "id": "PIrfxCE-",
+    "name": "Клавиатура Logitech MX Mechanical",
+    "price": 15990,
+    "description": "Механическая клавиатура с низким профилем",
+    "category": "Периферия",
+    "stock": 7,
+    "imageUrl": "https://avatars.mds.yandex.net/get-mpic/12368623/2a0000019522ddfe3120983b242e91687ef4/orig"
+  },
+  {
+    "id": "gsGgqIfk",
+    "name": "Мышь Razer DeathAdder V3",
+    "price": 8990,
+    "description": "Легкая игровая мышь с сенсором 30K DPI",
+    "category": "Периферия",
+    "stock": 12,
+    "imageUrl": "https://avatars.mds.yandex.net/get-mpic/16096063/2a0000019a8aac710217af9986035ecd0b22/orig"
+  },
+  {
+    "id": "0yvzc8KI",
+    "name": "Планшет iPad Pro 12.9",
+    "price": 119990,
+    "description": "M2 чип, 256GB, Liquid Retina XDR дисплей",
+    "category": "Планшеты",
+    "stock": 5,
+    "imageUrl": "https://ir.ozone.ru/s3/multimedia-1-o/7001742300.jpg"
+  },
+  {
+    "id": "f0WwdodB",
+    "name": "Умные часы Apple Watch Ultra 2",
+    "price": 79990,
+    "description": "Титановый корпус, всегда включенный дисплей",
+    "category": "Носимые устройства",
+    "stock": 6,
+    "imageUrl": "https://avatars.mds.yandex.net/get-mpic/6597196/2a00000193c039653906f0776227e255e478/orig"
+  },
+  {
+    "id": "pySHotQc",
+    "name": "Внешний SSD Samsung T7 1TB",
+    "price": 9990,
+    "description": "Скорость до 1050 МБ/с, ударопрочный корпус",
+    "category": "Хранение данных",
+    "stock": 20,
+    "imageUrl": "https://basket-28.wbbasket.ru/vol5278/part527874/527874469/images/big/1.webp"
+  },
+  {
+    "id": "dFeS50nd",
+    "name": "Роутер TP-Link Archer AX90",
+    "price": 18990,
+    "description": "Wi-Fi 6, скорость до 6600 Мбит/с",
+    "category": "Сетевое оборудование",
+    "stock": 8,
+    "imageUrl": "https://i-teh.com/upload/iblock/c2a/btjpk0equvt2khbbkj1qn3iumh16g738.jpg"
+  }
+]

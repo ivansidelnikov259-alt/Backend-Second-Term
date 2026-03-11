@@ -1,0 +1,29 @@
+meta {
+  name: Create Product
+  type: http
+  seq: 6
+}
+
+post {
+  url: http://localhost:3000/api/products
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI3MDEycHZmRjRIdEN1ZXAwWUNuQmEiLCJlbWFpbCI6InNpZGVsbmlrb3YuaXZhbkBnbWFpbC5jb20iLCJpYXQiOjE3NzMyNDYxNjksImV4cCI6MTc3MzI0NzA2OX0.hVmBe04g7rgs7-MABRtw1DEqxCHzNYg-cyvUPAIuURk
+}
+
+body:json {
+  {
+      "title": "Мышь Игровая ASUS",
+      "category": "Аксессуары",
+      "description": "Беспроводная мышь",
+      "price": 7999
+  }
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+}

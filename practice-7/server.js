@@ -6,39 +6,70 @@ const cors = require('cors');
 
 const app = express();
 const PORT = 3000;
-const JWT_SECRET = 'your_secret_key';
-const ACCESS_EXPIRES_IN = '15m';
 
-// ========== КРИТИЧЕСКИ ВАЖНО: MIDDLEWARE В ПРАВИЛЬНОМ ПОРЯДКЕ ==========
+// Секреты для токенов
+const ACCESS_SECRET = 'your_access_secret_key_here';
+const REFRESH_SECRET = 'your_refresh_secret_key_here';
+
+// Время жизни токенов
+const ACCESS_EXPIRES_IN = '15m';
+const REFRESH_EXPIRES_IN = '7d';
+
+// ========== MIDDLEWARE ==========
 app.use(cors({
-    origin: '*',
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:5175'], // Разрешаем несколько портов
+    credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
-// Эти middleware ДОЛЖНЫ быть перед всеми маршрутами
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Добавим middleware для логирования всех запросов
+// Логирование запросов
 app.use((req, res, next) => {
     console.log(`${req.method} ${req.url}`);
-    console.log('Headers:', req.headers);
-    console.log('Body:', req.body);
+    if (req.body && Object.keys(req.body).length > 0) {
+        console.log('Body:', req.body);
+    }
     next();
-});
-
-// ========== ТЕСТОВЫЙ МАРШРУТ ==========
-app.get('/test', (req, res) => {
-    res.json({ 
-        message: '✅ Сервер работает!',
-        bodyParser: 'активен'
-    });
 });
 
 // ========== ХРАНИЛИЩА ==========
 let users = [];
-let products = [];
+let products = [
+    {
+        id: '1',
+        title: 'Смартфон Samsung Galaxy S25 ULTRA',
+        category: 'Электроника',
+        description: 'Современный смартфон с отличной камерой 512 GB',
+        price: 120000,
+        imageUrl: 'https://p.turbosquid.com/ts-thumb/1C/zWDi7b/Ln/d7/jpg/1754348689/1920x1080/fit_q87/46f135b06234b3cc36a1d663b142170f7c2cc84e/d7.jpg', // Фото телефона
+        created_by: 'admin',
+        created_at: new Date().toISOString()
+    },
+    {
+        id: '2',
+        title: 'Ноутбук Apple MacBook PRO',
+        category: 'Электроника',
+        description: 'Мощный ноутбук для работы 512 GB',
+        price: 120000,
+        imageUrl: 'https://trashbox.ru/ifiles2/2073989_8f191e_image.png_minx2.jpg/macbook-air-13-m4-obzor-19.webp', // Фото MacBook
+        created_by: 'admin',
+        created_at: new Date().toISOString()
+    },
+    {
+        id: '3',
+        title: 'Наушники JBL TUNE 780 NC',
+        category: 'Аудио',
+        description: 'Беспроводные наушники с активным шумоподавлением',
+        price: 20000,
+        imageUrl: 'https://cdn1.technopark.ru/technopark/photos_resized/product/1000_1000/811584/7_811584.jpeg?timestamp=2025-12-01_10-42-46', // Фото наушников
+        created_by: 'admin',
+        created_at: new Date().toISOString()
+    }
+];
+let refreshTokens = new Set(); // Хранилище активных refresh-токенов
 
 // ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
 async function hashPassword(password) {
@@ -49,6 +80,33 @@ async function verifyPassword(password, hash) {
     return bcrypt.compare(password, hash);
 }
 
+function generateAccessToken(user) {
+    return jwt.sign(
+        { 
+            sub: user.id, 
+            email: user.email,
+            role: user.role,
+            first_name: user.first_name,
+            last_name: user.last_name
+        },
+        ACCESS_SECRET,
+        { expiresIn: ACCESS_EXPIRES_IN }
+    );
+}
+
+function generateRefreshToken(user) {
+    return jwt.sign(
+        { 
+            sub: user.id, 
+            email: user.email,
+            role: user.role
+        },
+        REFRESH_SECRET,
+        { expiresIn: REFRESH_EXPIRES_IN }
+    );
+}
+
+// Middleware для проверки аутентификации
 function authMiddleware(req, res, next) {
     const header = req.headers.authorization || '';
     const [scheme, token] = header.split(' ');
@@ -58,7 +116,7 @@ function authMiddleware(req, res, next) {
     }
 
     try {
-        const payload = jwt.verify(token, JWT_SECRET);
+        const payload = jwt.verify(token, ACCESS_SECRET);
         req.user = payload;
         next();
     } catch (err) {
@@ -66,27 +124,39 @@ function authMiddleware(req, res, next) {
     }
 }
 
+// Middleware для проверки ролей
+function roleMiddleware(allowedRoles) {
+    return (req, res, next) => {
+        if (!req.user) {
+            return res.status(401).json({ error: 'Не авторизован' });
+        }
+        
+        if (!allowedRoles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Недостаточно прав' });
+        }
+        
+        next();
+    };
+}
+
+// ========== ТЕСТОВЫЙ МАРШРУТ ==========
+app.get('/test', (req, res) => {
+    res.json({ 
+        message: '✅ Сервер работает!',
+        bodyParser: 'активен'
+    });
+});
+
 // ========== МАРШРУТЫ АУТЕНТИФИКАЦИИ ==========
 
 // РЕГИСТРАЦИЯ
 app.post('/api/auth/register', async (req, res) => {
     try {
-        console.log('📝 Регистрация - получен запрос');
-        console.log('📦 Тело запроса:', req.body);
-        
-        // Проверяем, есть ли тело запроса
-        if (!req.body || Object.keys(req.body).length === 0) {
-            return res.status(400).json({ 
-                error: 'Тело запроса пустое. Убедитесь, что отправляете JSON с правильными заголовками'
-            });
-        }
-        
         const { email, password, first_name, last_name } = req.body;
 
         if (!email || !password || !first_name || !last_name) {
             return res.status(400).json({ 
                 error: 'Все поля обязательны',
-                received: req.body,
                 required: ['email', 'password', 'first_name', 'last_name']
             });
         }
@@ -97,22 +167,32 @@ app.post('/api/auth/register', async (req, res) => {
         }
 
         const hashedPassword = await hashPassword(password);
+        
+        // По умолчанию создаем пользователя с ролью 'user'
+        // Первый зарегистрированный пользователь становится админом (для удобства)
+        const isFirstUser = users.length === 0;
+        const role = isFirstUser ? 'admin' : 'user';
+        
         const newUser = {
             id: nanoid(),
             email,
             first_name,
             last_name,
-            hashedPassword
+            hashedPassword,
+            role,
+            isActive: true,
+            created_at: new Date().toISOString()
         };
 
         users.push(newUser);
-        console.log('✅ Пользователь создан:', newUser.id);
+        console.log('✅ Пользователь создан:', { id: newUser.id, email: newUser.email, role: newUser.role });
         
         res.status(201).json({
             id: newUser.id,
             email: newUser.email,
             first_name: newUser.first_name,
-            last_name: newUser.last_name
+            last_name: newUser.last_name,
+            role: newUser.role
         });
         
     } catch (error) {
@@ -121,12 +201,9 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-// ВХОД (ПОЧТА И ПАРОЛЬ)
+// ВХОД
 app.post('/api/auth/login', async (req, res) => {
     try {
-        console.log('🔑 Вход - получен запрос');
-        console.log('📦 Тело запроса:', req.body);
-        
         const { email, password } = req.body;
 
         if (!email || !password) {
@@ -137,23 +214,81 @@ app.post('/api/auth/login', async (req, res) => {
         if (!user) {
             return res.status(401).json({ error: 'Неверные учетные данные' });
         }
+        
+        // Проверяем, активен ли пользователь
+        if (user.isActive === false) {
+            return res.status(403).json({ error: 'Пользователь заблокирован' });
+        }
 
         const isValid = await verifyPassword(password, user.hashedPassword);
         if (!isValid) {
             return res.status(401).json({ error: 'Неверные учетные данные' });
         }
 
-        const accessToken = jwt.sign(
-            { sub: user.id, email: user.email },
-            JWT_SECRET,
-            { expiresIn: ACCESS_EXPIRES_IN }
-        );
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken(user);
+        
+        refreshTokens.add(refreshToken);
 
-        res.json({ accessToken });
+        res.json({ 
+            accessToken, 
+            refreshToken,
+            user: {
+                id: user.id,
+                email: user.email,
+                first_name: user.first_name,
+                last_name: user.last_name,
+                role: user.role
+            }
+        });
         
     } catch (error) {
         console.error('❌ Ошибка:', error);
         res.status(500).json({ error: error.message });
+    }
+});
+
+// ОБНОВЛЕНИЕ ТОКЕНОВ
+app.post('/api/auth/refresh', (req, res) => {
+    const { refreshToken } = req.body;
+    
+    if (!refreshToken) {
+        return res.status(400).json({ error: 'refreshToken обязателен' });
+    }
+    
+    if (!refreshTokens.has(refreshToken)) {
+        return res.status(401).json({ error: 'Неверный refresh токен' });
+    }
+    
+    try {
+        const payload = jwt.verify(refreshToken, REFRESH_SECRET);
+        const user = users.find(u => u.id === payload.sub);
+        
+        if (!user) {
+            return res.status(401).json({ error: 'Пользователь не найден' });
+        }
+        
+        if (user.isActive === false) {
+            return res.status(403).json({ error: 'Пользователь заблокирован' });
+        }
+        
+        // Удаляем старый refresh токен
+        refreshTokens.delete(refreshToken);
+        
+        // Создаем новую пару токенов
+        const newAccessToken = generateAccessToken(user);
+        const newRefreshToken = generateRefreshToken(user);
+        
+        refreshTokens.add(newRefreshToken);
+        
+        res.json({
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken
+        });
+        
+    } catch (err) {
+        refreshTokens.delete(refreshToken);
+        return res.status(401).json({ error: 'Неверный или просроченный refresh токен' });
     }
 });
 
@@ -169,15 +304,112 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
         id: user.id,
         email: user.email,
         first_name: user.first_name,
-        last_name: user.last_name
+        last_name: user.last_name,
+        role: user.role
     });
+});
+
+// ВЫХОД (удаление refresh токена)
+app.post('/api/auth/logout', authMiddleware, (req, res) => {
+    const { refreshToken } = req.body;
+    
+    if (refreshToken) {
+        refreshTokens.delete(refreshToken);
+    }
+    
+    res.json({ message: 'Выход выполнен успешно' });
+});
+
+// ========== МАРШРУТЫ ДЛЯ ПОЛЬЗОВАТЕЛЕЙ (ТОЛЬКО АДМИН) ==========
+
+// ПОЛУЧИТЬ ВСЕХ ПОЛЬЗОВАТЕЛЕЙ
+app.get('/api/users', authMiddleware, roleMiddleware(['admin']), (req, res) => {
+    const safeUsers = users.map(user => ({
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role: user.role,
+        isActive: user.isActive,
+        created_at: user.created_at
+    }));
+    res.json(safeUsers);
+});
+
+// ПОЛУЧИТЬ ПОЛЬЗОВАТЕЛЯ ПО ID
+app.get('/api/users/:id', authMiddleware, roleMiddleware(['admin']), (req, res) => {
+    const user = users.find(u => u.id === req.params.id);
+    
+    if (!user) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    
+    res.json({
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        role: user.role,
+        isActive: user.isActive,
+        created_at: user.created_at
+    });
+});
+
+// ОБНОВИТЬ ПОЛЬЗОВАТЕЛЯ
+app.put('/api/users/:id', authMiddleware, roleMiddleware(['admin']), async (req, res) => {
+    const userIndex = users.findIndex(u => u.id === req.params.id);
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    
+    const { first_name, last_name, role, isActive } = req.body;
+    
+    if (first_name) users[userIndex].first_name = first_name;
+    if (last_name) users[userIndex].last_name = last_name;
+    if (role && ['user', 'seller', 'admin'].includes(role)) users[userIndex].role = role;
+    if (isActive !== undefined) users[userIndex].isActive = isActive;
+    
+    res.json({
+        id: users[userIndex].id,
+        email: users[userIndex].email,
+        first_name: users[userIndex].first_name,
+        last_name: users[userIndex].last_name,
+        role: users[userIndex].role,
+        isActive: users[userIndex].isActive
+    });
+});
+
+// УДАЛИТЬ/ЗАБЛОКИРОВАТЬ ПОЛЬЗОВАТЕЛЯ
+app.delete('/api/users/:id', authMiddleware, roleMiddleware(['admin']), (req, res) => {
+    const userIndex = users.findIndex(u => u.id === req.params.id);
+    
+    if (userIndex === -1) {
+        return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    
+    // Мягкое удаление - блокировка
+    users[userIndex].isActive = false;
+    
+    // Удаляем все refresh токены пользователя
+    const userRefreshTokens = Array.from(refreshTokens).filter(token => {
+        try {
+            const payload = jwt.verify(token, REFRESH_SECRET);
+            return payload.sub === req.params.id;
+        } catch {
+            return false;
+        }
+    });
+    userRefreshTokens.forEach(token => refreshTokens.delete(token));
+    
+    res.json({ message: 'Пользователь заблокирован' });
 });
 
 // ========== МАРШРУТЫ ДЛЯ ТОВАРОВ ==========
 
-// СОЗДАТЬ ТОВАР
-app.post('/api/products', authMiddleware, (req, res) => {
-    const { title, category, description, price } = req.body;
+// СОЗДАТЬ ТОВАР (Продавец и Админ)
+app.post('/api/products', authMiddleware, roleMiddleware(['seller', 'admin']), (req, res) => {
+    const { title, category, description, price, imageUrl } = req.body;
 
     if (!title || !category || !description || price === undefined) {
         return res.status(400).json({ error: 'Все поля обязательны' });
@@ -189,19 +421,21 @@ app.post('/api/products', authMiddleware, (req, res) => {
         category,
         description,
         price: Number(price),
-        created_by: req.user.sub
+        imageUrl: imageUrl || 'https://via.placeholder.com/400x300?text=No+Image', // Если нет фото - заглушка
+        created_by: req.user.sub,
+        created_at: new Date().toISOString()
     };
 
     products.push(newProduct);
     res.status(201).json(newProduct);
 });
 
-// ВСЕ ТОВАРЫ
+// ВСЕ ТОВАРЫ (Доступно всем, включая неавторизованных)
 app.get('/api/products', (req, res) => {
     res.json(products);
 });
 
-// ТОВАР ПО ID
+// ТОВАР ПО ID (Доступно всем)
 app.get('/api/products/:id', (req, res) => {
     const product = products.find(p => p.id === req.params.id);
     
@@ -212,17 +446,18 @@ app.get('/api/products/:id', (req, res) => {
     res.json(product);
 });
 
-// ОБНОВИТЬ ТОВАР
-app.put('/api/products/:id', authMiddleware, (req, res) => {
-    const { title, category, description, price } = req.body;
+// ОБНОВИТЬ ТОВАР (Продавец и Админ)
+app.put('/api/products/:id', authMiddleware, roleMiddleware(['seller', 'admin']), (req, res) => {
+    const { title, category, description, price, imageUrl } = req.body;
     const productIndex = products.findIndex(p => p.id === req.params.id);
 
     if (productIndex === -1) {
         return res.status(404).json({ error: 'Товар не найден' });
     }
 
-    if (products[productIndex].created_by !== req.user.sub) {
-        return res.status(403).json({ error: 'Нет прав на редактирование' });
+    // Проверяем, что продавец редактирует свой товар, а админ может редактировать любой
+    if (req.user.role !== 'admin' && products[productIndex].created_by !== req.user.sub) {
+        return res.status(403).json({ error: 'Нет прав на редактирование этого товара' });
     }
 
     products[productIndex] = {
@@ -230,22 +465,21 @@ app.put('/api/products/:id', authMiddleware, (req, res) => {
         ...(title && { title }),
         ...(category && { category }),
         ...(description && { description }),
-        ...(price !== undefined && { price: Number(price) })
+        ...(price !== undefined && { price: Number(price) }),
+        ...(imageUrl && { imageUrl }), // Добавляем фото
+        updated_at: new Date().toISOString()
     };
 
     res.json(products[productIndex]);
 });
 
-// УДАЛИТЬ ТОВАР
-app.delete('/api/products/:id', authMiddleware, (req, res) => {
+
+// УДАЛИТЬ ТОВАР (Только Админ)
+app.delete('/api/products/:id', authMiddleware, roleMiddleware(['admin']), (req, res) => {
     const productIndex = products.findIndex(p => p.id === req.params.id);
 
     if (productIndex === -1) {
         return res.status(404).json({ error: 'Товар не найден' });
-    }
-
-    if (products[productIndex].created_by !== req.user.sub) {
-        return res.status(403).json({ error: 'Нет прав на удаление' });
     }
 
     products.splice(productIndex, 1);
@@ -257,14 +491,5 @@ app.listen(PORT, () => {
     console.log(`=================================`);
     console.log(`🚀 Сервер запущен: http://localhost:${PORT}`);
     console.log(`🔧 Тест: http://localhost:${PORT}/test`);
-    console.log(`📚 Маршруты:`);
-    console.log(`   POST  /api/auth/register`);
-    console.log(`   POST  /api/auth/login`);
-    console.log(`   GET   /api/auth/me (требует токен)`);
-    console.log(`   POST  /api/products (требует токен)`);
-    console.log(`   GET   /api/products`);
-    console.log(`   GET   /api/products/:id`);
-    console.log(`   PUT   /api/products/:id (требует токен)`);
-    console.log(`   DELETE /api/products/:id (требует токен)`);
     console.log(`=================================`);
 });

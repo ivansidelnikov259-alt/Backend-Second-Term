@@ -1,10 +1,12 @@
-const CACHE_NAME = 'notes-pwa-v1';
-
+const CACHE_NAME = 'app-shell-v4';
+const DYNAMIC_CACHE = 'dynamic-v4';
 const ASSETS = [
     '/',
     '/index.html',
     '/app.js',
     '/manifest.json',
+    '/content/home.html',
+    '/content/about.html',
     '/icons/favicon-16x16.png',
     '/icons/favicon-32x32.png',
     '/icons/favicon-128x128.png',
@@ -13,85 +15,89 @@ const ASSETS = [
     '/icons/favicon.ico'
 ];
 
-// Установка
 self.addEventListener('install', event => {
-    console.log('[SW] Установка...');
-    
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then(cache => {
-                console.log('[SW] Кэширование ресурсов');
-                return cache.addAll(ASSETS);
-            })
-            .then(() => {
-                console.log('[SW] Установка завершена');
-                return self.skipWaiting();
-            })
-            .catch(err => {
-                console.error('[SW] Ошибка кэширования:', err);
-            })
+            .then(cache => cache.addAll(ASSETS))
+            .then(() => self.skipWaiting())
     );
 });
 
-// Активация
 self.addEventListener('activate', event => {
-    console.log('[SW] Активация...');
-    
     event.waitUntil(
         caches.keys().then(keys => {
             return Promise.all(
-                keys.map(key => {
-                    if (key !== CACHE_NAME) {
-                        console.log('[SW] Удаление старого кэша:', key);
-                        return caches.delete(key);
-                    }
-                })
+                keys.filter(k => k !== CACHE_NAME && k !== DYNAMIC_CACHE)
+                    .map(k => caches.delete(k))
             );
-        }).then(() => {
-            console.log('[SW] Активация завершена');
-            return self.clients.claim();
-        })
+        }).then(() => self.clients.claim())
     );
 });
 
-// Перехват запросов
 self.addEventListener('fetch', event => {
     const url = new URL(event.request.url);
-    
-    if (url.protocol === 'chrome-extension:' || url.protocol === 'moz-extension:') {
+    if (url.origin !== location.origin) return;
+
+    if (url.pathname.startsWith('/content/')) {
+        event.respondWith(
+            fetch(event.request)
+                .then(networkRes => {
+                    const clone = networkRes.clone();
+                    caches.open(DYNAMIC_CACHE).then(cache => {
+                        cache.put(event.request, clone);
+                    });
+                    return networkRes;
+                })
+                .catch(() => {
+                    return caches.match(event.request)
+                        .then(cached => cached || caches.match('/content/home.html'));
+                })
+        );
         return;
     }
-    
+
     event.respondWith(
         caches.match(event.request)
-            .then(cachedResponse => {
-                if (cachedResponse) {
-                    return cachedResponse;
-                }
-                
-                return fetch(event.request)
-                    .then(networkResponse => {
-                        if (!networkResponse || networkResponse.status !== 200) {
-                            return networkResponse;
-                        }
-                        
-                        const responseToCache = networkResponse.clone();
-                        caches.open(CACHE_NAME)
-                            .then(cache => {
-                                cache.put(event.request, responseToCache);
-                            });
-                        
-                        return networkResponse;
-                    })
-                    .catch(() => {
-                        if (event.request.headers.get('accept').includes('text/html')) {
-                            return caches.match('/index.html');
-                        }
-                        return new Response('Офлайн: ресурс не найден', {
-                            status: 404,
-                            statusText: 'Not Found'
-                        });
-                    });
-            })
+            .then(cached => cached || fetch(event.request))
+    );
+});
+
+// ВАЖНО: Обработчик Windows уведомлений
+self.addEventListener('push', (event) => {
+    console.log('[SW] Получено push-сообщение');
+    
+    let data = { 
+        title: '📝 Новая заметка', 
+        body: 'Кто-то добавил новую заметку!' 
+    };
+    
+    if (event.data) {
+        try {
+            data = event.data.json();
+        } catch(e) {
+            data.body = event.data.text();
+        }
+    }
+    
+    const options = {
+        body: data.body,
+        icon: '/icons/favicon-128x128.png',
+        badge: '/icons/favicon-32x32.png',
+        vibrate: [200, 100, 200],
+        silent: false,
+        tag: 'new-note',
+        requireInteraction: true  // уведомление не исчезает само
+    };
+    
+    event.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// Обработчик клика по уведомлению
+self.addEventListener('notificationclick', (event) => {
+    event.notification.close();
+    event.waitUntil(
+        clients.openWindow('/')
     );
 });

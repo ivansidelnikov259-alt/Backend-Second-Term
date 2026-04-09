@@ -8,6 +8,11 @@ const disablePushBtn = document.getElementById('disable-push');
 let socket = null;
 const SERVER_URL = 'https://localhost:3001';
 
+// Генерация уникального ID
+function generateId() {
+    return Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+}
+
 // Функция для показа уведомлений на сайте
 function showSiteNotification(message, type = 'info') {
     const toast = document.createElement('div');
@@ -16,7 +21,7 @@ function showSiteNotification(message, type = 'info') {
         position: fixed; 
         bottom: 20px; 
         right: 20px; 
-        background: ${type === 'success' ? '#28a745' : '#4285f4'}; 
+        background: ${type === 'success' ? '#28a745' : type === 'error' ? '#dc3545' : '#4285f4'}; 
         color: white; 
         padding: 12px 20px; 
         border-radius: 8px; 
@@ -29,7 +34,7 @@ function showSiteNotification(message, type = 'info') {
     setTimeout(() => toast.remove(), 4000);
 }
 
-// Добавляем CSS анимацию
+// CSS анимация
 const style = document.createElement('style');
 style.textContent = `
     @keyframes slideIn {
@@ -74,16 +79,26 @@ function loadNotes() {
     const notes = JSON.parse(localStorage.getItem('notes') || '[]');
     const list = document.getElementById('notes-list');
     if (!list) return;
+    
     if (notes.length === 0) {
         list.innerHTML = '<li>📭 Нет заметок</li>';
         return;
     }
-    list.innerHTML = notes.map((note, index) => `
-        <li style="margin-bottom: 0.5rem;">
-            📌 ${escapeHtml(note)}
-            <button class="button small error" data-index="${index}" style="margin-left: 1rem;">Удалить</button>
-        </li>
-    `).join('');
+    
+    list.innerHTML = notes.map((note, index) => {
+        let reminderInfo = '';
+        if (note.reminder) {
+            const date = new Date(note.reminder);
+            reminderInfo = `<br><small>⏰ Напоминание: ${date.toLocaleString()}</small>`;
+        }
+        return `
+            <li style="margin-bottom: 0.75rem; padding: 0.75rem; border: 1px solid #eee; border-radius: 8px;">
+                📌 ${escapeHtml(note.text)}
+                ${reminderInfo}
+                <button class="button small error" data-index="${index}" style="margin-left: 1rem; margin-top: 0.5rem;">Удалить</button>
+            </li>
+        `;
+    }).join('');
 
     document.querySelectorAll('[data-index]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -96,25 +111,62 @@ function loadNotes() {
     });
 }
 
+// Обычная заметка (без напоминания)
 function addNote(text) {
     if (!text.trim()) return;
     const notes = JSON.parse(localStorage.getItem('notes') || '[]');
-    notes.push(text.trim());
+    notes.push({ id: generateId(), text: text.trim(), reminder: null });
     localStorage.setItem('notes', JSON.stringify(notes));
     loadNotes();
 
-    // Показываем уведомление на сайте
     showSiteNotification(`✅ Заметка добавлена: ${text.trim()}`, 'success');
 
-    // Отправляем через WebSocket другим клиентам
     if (socket && socket.connected) {
         socket.emit('newTask', { text: text.trim(), timestamp: Date.now() });
     }
 }
 
+// Заметка с напоминанием
+function addReminder(text, reminderTime) {
+    if (!text.trim() || !reminderTime) return;
+    
+    const reminderTimestamp = new Date(reminderTime).getTime();
+    const now = Date.now();
+    
+    if (reminderTimestamp <= now) {
+        showSiteNotification('❌ Время напоминания должно быть в будущем', 'error');
+        return;
+    }
+    
+    const notes = JSON.parse(localStorage.getItem('notes') || '[]');
+    const newNote = {
+        id: generateId(),
+        text: text.trim(),
+        reminder: reminderTimestamp
+    };
+    notes.push(newNote);
+    localStorage.setItem('notes', JSON.stringify(notes));
+    loadNotes();
+    
+    // Отправляем на сервер для планирования push-уведомления
+    if (socket && socket.connected) {
+        socket.emit('newReminder', {
+            id: newNote.id,
+            text: text.trim(),
+            reminderTime: reminderTimestamp
+        });
+    }
+    
+    showSiteNotification(`⏰ Напоминание установлено на ${new Date(reminderTimestamp).toLocaleString()}`, 'success');
+}
+
 function initNotes() {
     const form = document.getElementById('note-form');
     const input = document.getElementById('note-input');
+    const reminderForm = document.getElementById('reminder-form');
+    const reminderText = document.getElementById('reminder-text');
+    const reminderTime = document.getElementById('reminder-time');
+    
     if (!form) return;
 
     loadNotes();
@@ -128,6 +180,20 @@ function initNotes() {
             input.focus();
         }
     });
+    
+    if (reminderForm) {
+        reminderForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const text = reminderText.value.trim();
+            const time = reminderTime.value;
+            if (text && time) {
+                addReminder(text, time);
+                reminderText.value = '';
+                reminderTime.value = '';
+                reminderText.focus();
+            }
+        });
+    }
 }
 
 function escapeHtml(str) {
@@ -162,12 +228,9 @@ function initSocket() {
         console.log('❌ WebSocket отключен');
     });
     
-    // Получение уведомлений от других клиентов
     socket.on('taskAdded', (task) => {
         console.log('📥 Получена задача через WebSocket:', task);
-        // Уведомление на сайте
         showSiteNotification(`🆕 Новая заметка от другого пользователя: ${task.text}`, 'info');
-        // Обновляем список заметок
         if (document.getElementById('notes-list')) {
             loadNotes();
         }
@@ -186,7 +249,6 @@ function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
-// ⚠️ ВСТАВЬТЕ ВАШ ПУБЛИЧНЫЙ VAPID-КЛЮЧ
 const VAPID_PUBLIC_KEY = 'BP8HW_dXLLpReEnuuAz7ChH_A1O8YDPtVDgyhncM2OIu7hW13ZsPpVoVzrc7GucJqPnNy1yMT_Uoy05ht6JO5Ak';
 
 async function subscribeToPush() {
@@ -248,7 +310,6 @@ if ('serviceWorker' in navigator) {
             const registration = await navigator.serviceWorker.register('/sw.js');
             console.log('✅ SW зарегистрирован:', registration.scope);
             
-            // Проверяем существующую подписку
             const sub = await registration.pushManager.getSubscription();
             if (sub) {
                 enablePushBtn.style.display = 'none';

@@ -1,5 +1,5 @@
-const CACHE_NAME = 'app-shell-v4';
-const DYNAMIC_CACHE = 'dynamic-v4';
+const CACHE_NAME = 'app-shell-v7';
+const DYNAMIC_CACHE = 'dynamic-v7';
 const ASSETS = [
     '/',
     '/index.html',
@@ -62,18 +62,19 @@ self.addEventListener('fetch', event => {
     );
 });
 
-// ВАЖНО: Обработчик Windows уведомлений
 self.addEventListener('push', (event) => {
     console.log('[SW] Получено push-сообщение');
     
     let data = { 
-        title: '📝 Новая заметка', 
-        body: 'Кто-то добавил новую заметку!' 
+        title: '📝 Новое уведомление', 
+        body: '',
+        reminderId: null
     };
     
     if (event.data) {
         try {
             data = event.data.json();
+            console.log('[SW] Данные:', data);
         } catch(e) {
             data.body = event.data.text();
         }
@@ -84,20 +85,65 @@ self.addEventListener('push', (event) => {
         icon: '/icons/favicon-128x128.png',
         badge: '/icons/favicon-32x32.png',
         vibrate: [200, 100, 200],
-        silent: false,
-        tag: 'new-note',
-        requireInteraction: true  // уведомление не исчезает само
+        requireInteraction: true,
+        data: {
+            reminderId: data.reminderId,
+            url: '/'
+        }
     };
+    
+    if (data.reminderId) {
+        options.actions = [
+            {
+                action: 'snooze',
+                title: '⏰ Отложить на 1 минуту'
+            }
+        ];
+    }
     
     event.waitUntil(
         self.registration.showNotification(data.title, options)
     );
 });
 
-// Обработчик клика по уведомлению
 self.addEventListener('notificationclick', (event) => {
-    event.notification.close();
-    event.waitUntil(
-        clients.openWindow('/')
-    );
+    console.log('[SW] Клик, action:', event.action);
+    
+    const notification = event.notification;
+    const action = event.action;
+    const reminderId = notification.data?.reminderId;
+    
+    notification.close();
+    
+    if (action === 'snooze') {
+        console.log('[SW] Откладывание:', reminderId);
+        
+        event.waitUntil(
+            fetch(`/snooze?reminderId=${reminderId}`, { method: 'POST' })
+                .then(response => {
+                    if (response.ok) {
+                        return self.registration.showNotification('✅ Отложено', {
+                            body: 'Напоминание через 1 минуту',
+                            icon: '/icons/favicon-128x128.png'
+                        });
+                    }
+                })
+                .catch(err => console.error('[SW] Ошибка:', err))
+        );
+    } else {
+        // Обычный клик — отправляем dismiss и открываем приложение
+        if (reminderId) {
+            fetch(`/dismiss?reminderId=${reminderId}`, { method: 'POST' }).catch(console.error);
+        }
+        event.waitUntil(clients.openWindow('/'));
+    }
+});
+
+// Если уведомление закрыто без действия (крестик) — удаляем напоминание
+self.addEventListener('notificationclose', (event) => {
+    const reminderId = event.notification.data?.reminderId;
+    if (reminderId) {
+        console.log('[SW] Уведомление закрыто, удаляем напоминание:', reminderId);
+        fetch(`/dismiss?reminderId=${reminderId}`, { method: 'POST' }).catch(console.error);
+    }
 });

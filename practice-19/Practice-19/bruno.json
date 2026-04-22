@@ -1,0 +1,9 @@
+{
+  "version": "1",
+  "name": "Practice-19",
+  "type": "collection",
+  "ignore": [
+    "node_modules",
+    ".git"
+  ]
+}
